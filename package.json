@@ -1,0 +1,34 @@
+{
+  "name": "clipilot",
+  "version": "1.0.0",
+  "description": "Manually bootstrap a GitHub Copilot CLI session on disk",
+  "type": "module",
+  "bin": {
+    "clipilot": "./create-session.js"
+  },
+  "files": [
+    "create-session.js",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "keywords": [
+    "github",
+    "copilot",
+    "copilot-cli",
+    "session",
+    "cli"
+  ],
+  "author": "Tommertom",
+  "license": "Unlicense",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tommertom/clipilot.git"
+  },
+  "homepage": "https://github.com/Tommertom/clipilot#readme",
+  "bugs": {
+    "url": "https://github.com/Tommertom/clipilot/issues"
+  }
+}

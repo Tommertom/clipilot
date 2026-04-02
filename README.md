@@ -27,17 +27,29 @@ The GitHub Copilot CLI is a powerful agentic coding tool, but it is not always a
 - Node.js 18 or later (uses native ESM)
 - A GitHub Copilot subscription with Copilot CLI access (for resuming the session)
 
+## Installation
+
+```bash
+npm install -g clipilot
+```
+
+Or run without installing:
+
+```bash
+npx clipilot
+```
+
 ## Usage
 
 ```bash
 # Interactive — prompts for each value
-node create-session.js
+clipilot
 
 # Fast mode — only prompts for summary and prompt; uses defaults for the rest
-node create-session.js --fast
+clipilot --fast
 
 # Fully scripted
-node create-session.js \
+clipilot \
   --cwd /path/to/project \
   --summary "Fix login bug" \
   --prompt "Investigate why JWT tokens expire too early" \
