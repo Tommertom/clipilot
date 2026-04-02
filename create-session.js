@@ -11,11 +11,9 @@
  * Options:
  *   --cwd <path>        Working directory for the session (default: current dir)
  *   --summary <text>    Session summary/title (default: "Manual Session")
- *   --producer <name>   Producer name (default: "copilot-agent")
- *   --version <ver>     Copilot version string (default: "1.0.15")
- *   --id <uuid>         Session ID to use (default: auto-generated UUID)
  *   --prompt <text>     Initial user message prompt (default: "")
  *   --mode <mode>       Agent mode: autopilot, agent, plan (default: "autopilot")
+ *   --fast              Only ask for summary and prompt; use defaults for everything else
  *   --help              Show this help
  */
 
@@ -36,6 +34,10 @@ for (let i = 0; i < args.length; i++) {
     printHelp();
     process.exit(0);
   }
+  if (args[i] === "--fast") {
+    opts.fast = true;
+    continue;
+  }
   if (args[i].startsWith("--") && i + 1 < args.length) {
     opts[args[i].slice(2)] = args[++i];
   }
@@ -50,11 +52,9 @@ Usage: node create-session.js [options]
 Options:
   --cwd <path>        Working directory for the session (default: current dir)
   --summary <text>    Session summary/title (default: "Manual Session")
-  --producer <name>   Producer identifier (default: "copilot-agent")
-  --version <ver>     Copilot version string (default: "1.0.15")
-  --id <uuid>         Session ID to use (default: auto-generated UUID)
   --prompt <text>     Initial user message prompt (default: "")
   --mode <mode>       Agent mode: autopilot, agent, plan (default: "autopilot")
+  --fast              Only ask for summary and prompt; use defaults for everything else
   --help              Show this help
 
 When invoked with no arguments, an interactive prompt collects each value.
@@ -66,13 +66,9 @@ Press Enter to accept the shown default.
 // Interactive mode (no args supplied)
 // ---------------------------------------------------------------------------
 async function promptDefaults() {
-  const autoId = randomUUID();
   const defaults = {
     cwd: process.cwd(),
     summary: "Manual Session",
-    producer: "copilot-agent",
-    version: "1.0.15",
-    id: autoId,
     prompt: "",
     agentMode: "autopilot",
   };
@@ -105,18 +101,48 @@ async function promptDefaults() {
 }
 
 // ---------------------------------------------------------------------------
+// Fast interactive mode (--fast flag: only asks summary and prompt)
+// ---------------------------------------------------------------------------
+async function promptFast() {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (question) => new Promise((res) => rl.question(question, res));
+
+  console.log(
+    "\ncreate-session — fast mode (press Enter to accept defaults)\n",
+  );
+
+  const answers = {};
+
+  if (!opts.summary) {
+    const raw = await ask(`  summary [Manual Session]: `);
+    answers.summary = raw.trim() || "Manual Session";
+  }
+
+  if (!opts.prompt) {
+    const raw = await ask(`  prompt []: `);
+    answers.prompt = raw.trim();
+  }
+
+  rl.close();
+  console.log();
+  return answers;
+}
+
+// ---------------------------------------------------------------------------
 // Resolve options
 // ---------------------------------------------------------------------------
 const interactive = args.length === 0;
 if (interactive) {
   Object.assign(opts, await promptDefaults());
+} else if (opts.fast) {
+  Object.assign(opts, await promptFast());
 }
 
 const cwd = resolve(opts.cwd ?? process.cwd());
 const summary = opts.summary ?? "Manual Session";
-const producer = opts.producer ?? "copilot-agent";
-const copilotVersion = opts.version ?? "1.0.15";
-const sessionId = opts.id ?? randomUUID();
+const producer = "copilot-agent";
+const copilotVersion = "1.0.15";
+const sessionId = randomUUID();
 const prompt = opts.prompt ?? "";
 const agentMode = opts.agentMode ?? opts.mode ?? "autopilot";
 
