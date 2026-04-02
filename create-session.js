@@ -19,7 +19,13 @@
 
 import { randomUUID } from "crypto";
 import { execSync } from "child_process";
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "fs";
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+} from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
@@ -54,6 +60,7 @@ Options:
   --summary <text>    Session summary/title (default: "Manual Session")
   --prompt <text>     Initial user message prompt (default: "")
   --mode <mode>       Agent mode: autopilot, agent, plan (default: "autopilot")
+  --agent <name>      Load agent by name from .github/agents/<name>.agent.md
   --fast              Only ask for summary and prompt; use defaults for everything else
   --help              Show this help
 
@@ -73,6 +80,19 @@ async function promptDefaults() {
     agentMode: "autopilot",
   };
 
+  // Only ask for values not already provided via CLI args
+  const needed = Object.entries(defaults).filter(([key]) => {
+    const cliKey = key === "agentMode" ? "mode" : key;
+    return opts[key] === undefined && opts[cliKey] === undefined;
+  });
+
+  if (needed.length === 0) {
+    console.log(
+      "\ncreate-session — interactive mode (all values provided via CLI)\n",
+    );
+    return {};
+  }
+
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (question) => new Promise((res) => rl.question(question, res));
 
@@ -81,7 +101,7 @@ async function promptDefaults() {
   );
 
   const answers = {};
-  for (const [key, def] of Object.entries(defaults)) {
+  for (const [key, def] of needed) {
     if (key === "agentMode") {
       let raw;
       do {
@@ -129,9 +149,48 @@ async function promptFast() {
 }
 
 // ---------------------------------------------------------------------------
+// Agent selection — scans .github/agents/*.agent.md in the given dir
+// ---------------------------------------------------------------------------
+async function selectAgent(dir) {
+  const agentsDir = join(dir, ".github", "agents");
+  if (!existsSync(agentsDir)) return null;
+
+  const files = readdirSync(agentsDir).filter((f) => f.endsWith(".agent.md"));
+  if (files.length === 0) return null;
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (q) => new Promise((res) => rl.question(q, res));
+
+  console.log("Available agents:");
+  console.log("  0. None");
+  files.forEach((f, i) => {
+    console.log(`  ${i + 1}. ${f.replace(".agent.md", "")}`);
+  });
+
+  let choice;
+  do {
+    const raw = await ask(`\n  Select agent [0]: `);
+    choice = parseInt(raw.trim() || "0", 10);
+  } while (isNaN(choice) || choice < 0 || choice > files.length);
+
+  rl.close();
+  console.log();
+
+  if (choice === 0) return null;
+
+  const selectedFile = files[choice - 1];
+  return readFileSync(join(agentsDir, selectedFile), "utf8");
+}
+
+// ---------------------------------------------------------------------------
 // Resolve options
 // ---------------------------------------------------------------------------
-const interactive = args.length === 0;
+const hasAllArgs =
+  opts.cwd &&
+  opts.summary &&
+  opts.prompt !== undefined &&
+  (opts.mode || opts.agentMode);
+const interactive = args.length === 0 || (!opts.fast && !hasAllArgs);
 if (interactive) {
   Object.assign(opts, await promptDefaults());
 } else if (opts.fast) {
@@ -145,6 +204,32 @@ const copilotVersion = "1.0.15";
 const sessionId = randomUUID();
 const prompt = opts.prompt ?? "";
 const agentMode = opts.agentMode ?? opts.mode ?? "autopilot";
+
+// ---------------------------------------------------------------------------
+// Agent selection (interactive and fast modes, or --agent flag)
+// ---------------------------------------------------------------------------
+let agentContent = null;
+if (opts.agent) {
+  const agentsDir = join(cwd, ".github", "agents");
+  const agentFile = join(agentsDir, `${opts.agent}.agent.md`);
+  if (!existsSync(agentFile)) {
+    const available = existsSync(agentsDir)
+      ? readdirSync(agentsDir)
+          .filter((f) => f.endsWith(".agent.md"))
+          .map((f) => f.replace(".agent.md", ""))
+      : [];
+    console.error(`Error: agent "${opts.agent}" not found in ${agentsDir}`);
+    if (available.length > 0) {
+      console.error(`Available agents: ${available.join(", ")}`);
+    } else {
+      console.error(`No agents found in .github/agents/`);
+    }
+    process.exit(1);
+  }
+  agentContent = readFileSync(agentFile, "utf8");
+} else if (interactive || opts.fast) {
+  agentContent = await selectAgent(cwd);
+}
 
 const startTime = new Date();
 const ts = (offsetMs) => new Date(startTime.getTime() + offsetMs).toISOString();
@@ -264,11 +349,23 @@ const modeChange2Event = {
 
 const userMessageId = randomUUID();
 const interactionId = randomUUID();
+
+let transformedContent = prompt;
+if (agentContent) {
+  const datetime = ts(16119);
+  transformedContent =
+    `<agent_instructions>\n\n${agentContent}\n\n</agent_instructions>` +
+    `\n\n<current_datetime>${datetime}</current_datetime>` +
+    `\n\n${prompt}` +
+    `\n<userRequest>\n${prompt}\n</userRequest>` +
+    `\n\n\n<reminder>\n<sql_tables>No tables currently exist. Default tables (todos, todo_deps) will be created automatically when you first use the SQL tool.</sql_tables>\n</reminder>`;
+}
+
 const userMessageEvent = {
   type: "user.message",
   data: {
     content: prompt,
-    transformedContent: prompt,
+    transformedContent,
     attachments: [],
     agentMode,
     interactionId,
